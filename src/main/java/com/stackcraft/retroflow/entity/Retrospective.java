@@ -20,7 +20,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.Valid;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -47,6 +49,9 @@ public class Retrospective {
     @Column(nullable = false, length = 16)
     private RetrospectiveStatus status;
 
+    @Column(nullable = false, updatable = false)
+    private Instant createdAt;
+
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "team_id", nullable = false)
@@ -72,8 +77,11 @@ public class Retrospective {
 
     @PrePersist
     private void applyDefaults() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
         if (date == null) {
-            date = LocalDate.now();
+            date = LocalDate.now(ZoneOffset.UTC);
         }
         if (status == null) {
             status = RetrospectiveStatus.OPEN;
@@ -110,6 +118,14 @@ public class Retrospective {
 
     public void setStatus(RetrospectiveStatus status) {
         this.status = status;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 
     public Team getTeam() {

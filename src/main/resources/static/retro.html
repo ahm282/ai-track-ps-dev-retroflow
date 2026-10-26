@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RetroFlow retrospective</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header><span class="brand">RetroFlow</span><nav><a href="/">Teams</a><a href="/action-items.html">Action items</a></nav></header>
+<main>
+<p><a id="back" href="/">Back to team</a></p>
+<h1 id="title">Retrospective</h1>
+<p><span id="status" class="badge"></span> <span id="date" class="muted"></span></p>
+<p id="error" class="error" role="alert" aria-live="polite"></p>
+<section class="card" id="controls">
+<div class="row"><label for="acting">Acting as</label><select id="acting"></select>
+<button type="button" id="close" class="secondary">Close retrospective</button></div>
+</section>
+<section class="card" id="add-card">
+<h2>Add feedback</h2>
+<form id="add-form">
+<label for="type">Type</label>
+<select id="type">
+<option value="WENT_WELL">Went well</option>
+<option value="NEEDS_IMPROVEMENT">Needs improvement</option>
+<option value="ACTION_ITEM">Action item</option>
+</select>
+<label for="content">Content</label>
+<textarea id="content" rows="3" required maxlength="4000"></textarea>
+<div id="priority-wrap" hidden>
+<label for="priority">Priority</label>
+<select id="priority"><option>HIGH</option><option selected>MEDIUM</option><option>LOW</option></select>
+</div>
+<p><button type="submit">Add</button></p>
+</form>
+</section>
+<div class="columns">
+<section class="card"><h2>Went well</h2><div id="col-WENT_WELL"></div></section>
+<section class="card"><h2>Needs improvement</h2><div id="col-NEEDS_IMPROVEMENT"></div></section>
+<section class="card"><h2>Action items</h2><div id="col-ACTION_ITEM"></div></section>
+</div>
+</main>
+<script src="/js/api.js"></script>
+<script src="/js/retro.js"></script>
+</body>
+</html>

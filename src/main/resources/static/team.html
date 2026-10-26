@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RetroFlow team</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header><span class="brand">RetroFlow</span><nav><a href="/">Teams</a><a href="/action-items.html">Action items</a></nav></header>
+<main>
+<h1 id="team-name">Team</h1>
+<p id="error" class="error" role="alert" aria-live="polite"></p>
+<section class="card">
+<h2>Members</h2>
+<div class="row"><label for="acting">Acting as</label><select id="acting"></select></div>
+<ul id="members" class="plain"></ul>
+<form id="member-form" class="row">
+<label class="sr-only" for="member-name">New member name</label>
+<input id="member-name" class="grow" required maxlength="255" placeholder="New member name" autocomplete="off">
+<button type="submit">Add member</button>
+</form>
+</section>
+<section class="card">
+<h2>Retrospectives</h2>
+<ul id="retros" class="plain"></ul>
+<p id="empty" class="muted" hidden>No retrospectives yet.</p>
+<form id="retro-form" class="row">
+<label class="sr-only" for="retro-title">Retrospective title</label>
+<input id="retro-title" class="grow" required maxlength="255" placeholder="Retrospective title" autocomplete="off">
+<button type="submit">Create retrospective</button>
+</form>
+</section>
+</main>
+<script src="/js/api.js"></script>
+<script src="/js/team.js"></script>
+</body>
+</html>

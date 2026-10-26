@@ -53,6 +53,10 @@ public class FeedbackItem {
     @JoinColumn(name = "submitter_id", nullable = false, updatable = false)
     private Member submitter;
 
+    @NotBlank
+    @Column(nullable = false, length = 255, updatable = false)
+    private String submitterName;
+
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "retrospective_id", nullable = false)
@@ -62,7 +66,7 @@ public class FeedbackItem {
     }
 
     public FeedbackItem(UUID id, String content, FeedbackType type, Priority priority,
-                        Boolean completed, Instant createdAt, Member submitter,
+                        Boolean completed, Instant createdAt, Member submitter, String submitterName,
                         Retrospective retrospective) {
         this.id = id;
         this.content = content;
@@ -71,6 +75,7 @@ public class FeedbackItem {
         this.completed = completed;
         this.createdAt = createdAt;
         this.submitter = submitter;
+        this.submitterName = submitterName;
         this.retrospective = retrospective;
         applyActionItemDefaults();
     }
@@ -147,6 +152,14 @@ public class FeedbackItem {
 
     public void setSubmitter(Member submitter) {
         this.submitter = submitter;
+    }
+
+    public String getSubmitterName() {
+        return submitterName;
+    }
+
+    public void setSubmitterName(String submitterName) {
+        this.submitterName = submitterName;
     }
 
     public Instant getCreatedAt() {
