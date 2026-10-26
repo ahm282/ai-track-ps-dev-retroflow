@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RetroFlow teams</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header><span class="brand">RetroFlow</span><nav><a href="/">Teams</a><a href="/action-items.html">Action items</a></nav></header>
+<main>
+<h1>Teams</h1>
+<p id="error" class="error" role="alert" aria-live="polite"></p>
+<section class="card"><ul id="teams" class="plain"></ul><p id="empty" class="muted" hidden>No teams yet.</p></section>
+<section class="card">
+<h2>Create a team</h2>
+<form id="create-form">
+<label for="team-name">Team name</label>
+<input id="team-name" required maxlength="255" autocomplete="off">
+<label for="team-members">Members (comma separated)</label>
+<input id="team-members" required autocomplete="off" placeholder="Alice, Bob">
+<p><button type="submit">Create team</button></p>
+</form>
+</section>
+</main>
+<script src="/js/api.js"></script>
+<script src="/js/teams.js"></script>
+</body>
+</html>

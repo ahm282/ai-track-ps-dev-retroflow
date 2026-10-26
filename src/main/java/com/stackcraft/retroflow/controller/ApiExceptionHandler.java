@@ -1,6 +1,7 @@
 package com.stackcraft.retroflow.controller;
 
 import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.stackcraft.retroflow.dto.ErrorResponse;
 import com.stackcraft.retroflow.exception.ResourceNotFoundException;
 import com.stackcraft.retroflow.exception.RetroflowException;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -20,6 +22,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.util.Arrays;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -29,8 +33,10 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> invalidRequest(MethodArgumentNotValidException exception) {
-        String message = exception.getBindingResult().getFieldErrors().stream()
-            .map(error -> error.getField() + ": " + error.getDefaultMessage())
+        String message = exception.getBindingResult().getAllErrors().stream()
+            .map(error -> error instanceof FieldError fieldError
+                ? fieldError.getField() + ": " + fieldError.getDefaultMessage()
+                : error.getDefaultMessage())
             .sorted().distinct().collect(Collectors.joining("; "));
         return error(HttpStatus.BAD_REQUEST, message);
     }
@@ -48,7 +54,7 @@ public class ApiExceptionHandler {
                     : reference.getFieldName())
                 .collect(Collectors.joining("."));
             return error(HttpStatus.BAD_REQUEST, "Invalid value for " + (path.isEmpty() ? "request body" : path)
-                + "; use UUIDs for IDs and OPEN or CLOSED for status");
+                + expectedValues(mappingException));
         }
         return error(HttpStatus.BAD_REQUEST, "Request body is required and must contain valid JSON");
     }
@@ -61,11 +67,6 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> resourceNotFound(ResourceNotFoundException exception) {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(UnsupportedOperationException.class)
-    public ResponseEntity<ErrorResponse> notImplemented(UnsupportedOperationException exception) {
-        return error(HttpStatus.NOT_IMPLEMENTED, exception.getMessage());
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
@@ -98,6 +99,24 @@ public class ApiExceptionHandler {
         }
         LOGGER.error("Unexpected error", exception);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error");
+    }
+
+    private static String expectedValues(JsonMappingException exception) {
+        Class<?> target = exception instanceof InvalidFormatException invalidFormat ? invalidFormat.getTargetType() : null;
+        if (target == null) {
+            return "";
+        }
+        if (target.isEnum()) {
+            return "; use one of " + Arrays.stream(target.getEnumConstants()).map(Object::toString)
+                .collect(Collectors.joining(", "));
+        }
+        if (target == UUID.class) {
+            return "; use a valid UUID";
+        }
+        if (target == Boolean.class || target == boolean.class) {
+            return "; use true or false";
+        }
+        return "";
     }
 
     private ResponseEntity<ErrorResponse> error(HttpStatusCode status, String message) {

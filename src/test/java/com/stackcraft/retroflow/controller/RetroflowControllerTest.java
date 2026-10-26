@@ -9,6 +9,10 @@ import com.stackcraft.retroflow.exception.RetroflowException;
 import com.stackcraft.retroflow.service.RetrospectiveService;
 import com.stackcraft.retroflow.service.TeamService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -19,8 +23,12 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -386,6 +394,273 @@ class RetroflowControllerTest {
         result.andExpect(status().isNotFound());
         result.andExpect(content().json("""
             {"message": "No endpoint GET /api/unknown"}
+            """, true));
+    }
+
+    @Test
+    void listingTeams_returnsEveryTeamWithItsMembers() throws Exception {
+        // Arrange
+        when(teamService.listTeams()).thenReturn(List.of(team()));
+
+        // Act
+        ResultActions result = mockMvc.perform(get("/api/teams"));
+
+        // Assert
+        result.andExpect(status().isOk());
+        result.andExpect(content().json("[" + TEAM_JSON + "]", true));
+    }
+
+    @Test
+    void gettingARetrospective_returnsIt() throws Exception {
+        // Arrange
+        when(retrospectiveService.getRetrospective(RETRO_ID)).thenReturn(retrospective(RetrospectiveStatus.OPEN));
+
+        // Act
+        ResultActions result = mockMvc.perform(get("/api/retrospectives/{id}", RETRO_ID));
+
+        // Assert
+        result.andExpect(status().isOk());
+        result.andExpect(content().json(retrospectiveJson("OPEN"), true));
+    }
+
+    @Test
+    void gettingARetrospective_withMalformedId_isRejected() throws Exception {
+        // Act
+        ResultActions result = mockMvc.perform(get("/api/retrospectives/{id}", "not-a-uuid"));
+
+        // Assert
+        result.andExpect(status().isBadRequest());
+        result.andExpect(content().json("""
+            {"message": "id must be a valid UUID"}
+            """, true));
+    }
+
+    @Test
+    void gettingAMissingRetrospective_returnsNotFound() throws Exception {
+        // Arrange
+        when(retrospectiveService.getRetrospective(RETRO_ID))
+            .thenThrow(new ResourceNotFoundException("Retrospective not found"));
+
+        // Act
+        ResultActions result = mockMvc.perform(get("/api/retrospectives/{id}", RETRO_ID));
+
+        // Assert
+        result.andExpect(status().isNotFound());
+        result.andExpect(content().json("""
+            {"message": "Retrospective not found"}
+            """, true));
+    }
+
+    @Test
+    void addingAMember_returnsTheMember() throws Exception {
+        // Arrange
+        when(teamService.addMember(TEAM_ID, "Bob")).thenReturn(new Member(BOB_ID, "Bob", true, null));
+
+        // Act
+        ResultActions result = mockMvc.perform(post("/api/teams/{teamId}/members", TEAM_ID)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name": "Bob"}
+                """));
+
+        // Assert
+        result.andExpect(status().isCreated());
+        result.andExpect(content().json("""
+            {"id": "33333333-3333-3333-3333-333333333333", "name": "Bob"}
+            """, true));
+    }
+
+    @ParameterizedTest(name = "{1}")
+    @MethodSource("invalidMemberNameRequests")
+    void addingAMember_withInvalidInput_isRejected(String body, String message) throws Exception {
+        // Act
+        ResultActions result = mockMvc.perform(post("/api/teams/{teamId}/members", TEAM_ID)
+            .contentType(MediaType.APPLICATION_JSON).content(body));
+
+        // Assert
+        result.andExpect(status().isBadRequest());
+        result.andExpect(content().json("{\"message\": \"%s\"}".formatted(message), true));
+    }
+
+    @Test
+    void addingAMember_withMalformedTeamId_isRejected() throws Exception {
+        // Act
+        ResultActions result = mockMvc.perform(post("/api/teams/{teamId}/members", "not-a-uuid")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name": "Bob"}
+                """));
+
+        // Assert
+        result.andExpect(status().isBadRequest());
+        result.andExpect(content().json("""
+            {"message": "teamId must be a valid UUID"}
+            """, true));
+    }
+
+    @Test
+    void addingAMember_toAMissingTeam_returnsNotFound() throws Exception {
+        // Arrange
+        when(teamService.addMember(TEAM_ID, "Bob")).thenThrow(new ResourceNotFoundException("Team not found"));
+
+        // Act
+        ResultActions result = mockMvc.perform(post("/api/teams/{teamId}/members", TEAM_ID)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name": "Bob"}
+                """));
+
+        // Assert
+        result.andExpect(status().isNotFound());
+        result.andExpect(content().json("""
+            {"message": "Team not found"}
+            """, true));
+    }
+
+    @Test
+    void renamingAMember_returnsTheMember() throws Exception {
+        // Arrange
+        when(teamService.renameMember(TEAM_ID, BOB_ID, "Robert")).thenReturn(new Member(BOB_ID, "Robert", true, null));
+
+        // Act
+        ResultActions result = mockMvc.perform(put("/api/teams/{teamId}/members/{memberId}", TEAM_ID, BOB_ID)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name": "Robert"}
+                """));
+
+        // Assert
+        result.andExpect(status().isOk());
+        result.andExpect(content().json("""
+            {"id": "33333333-3333-3333-3333-333333333333", "name": "Robert"}
+            """, true));
+    }
+
+    @ParameterizedTest(name = "{1}")
+    @MethodSource("invalidMemberNameRequests")
+    void renamingAMember_withInvalidInput_isRejected(String body, String message) throws Exception {
+        // Act
+        ResultActions result = mockMvc.perform(put("/api/teams/{teamId}/members/{memberId}", TEAM_ID, BOB_ID)
+            .contentType(MediaType.APPLICATION_JSON).content(body));
+
+        // Assert
+        result.andExpect(status().isBadRequest());
+        result.andExpect(content().json("{\"message\": \"%s\"}".formatted(message), true));
+    }
+
+    static Stream<Arguments> invalidMemberNameRequests() {
+        return Stream.of(
+            Arguments.of("{}", "name: Member name must not be blank"),
+            Arguments.of("{\"name\": \"\"}", "name: Member name must not be blank"),
+            Arguments.of("{\"name\": \"   \"}", "name: Member name must not be blank"),
+            Arguments.of("{\"name\": \"Bob_1\"}", "name: Member name must contain only letters, digits and spaces"),
+            Arguments.of("{\"name\": \"" + "a".repeat(256) + "\"}", "name: Member name must be at most 255 characters"),
+            Arguments.of("", "Request body is required and must contain valid JSON"));
+    }
+
+    @Test
+    void renamingAMember_withMalformedMemberId_isRejected() throws Exception {
+        // Act
+        ResultActions result = mockMvc.perform(put("/api/teams/{teamId}/members/{memberId}", TEAM_ID, "not-a-uuid")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name": "Robert"}
+                """));
+
+        // Assert
+        result.andExpect(status().isBadRequest());
+        result.andExpect(content().json("""
+            {"message": "memberId must be a valid UUID"}
+            """, true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Team not found", "Member not found"})
+    void renamingAMember_withAMissingResource_returnsNotFound(String message) throws Exception {
+        // Arrange
+        when(teamService.renameMember(TEAM_ID, BOB_ID, "Robert")).thenThrow(new ResourceNotFoundException(message));
+
+        // Act
+        ResultActions result = mockMvc.perform(put("/api/teams/{teamId}/members/{memberId}", TEAM_ID, BOB_ID)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"name": "Robert"}
+                """));
+
+        // Assert
+        result.andExpect(status().isNotFound());
+        result.andExpect(content().json("{\"message\": \"%s\"}".formatted(message), true));
+    }
+
+    @Test
+    void removingAMember_returnsNoContent() throws Exception {
+        // Act
+        ResultActions result = mockMvc.perform(delete("/api/teams/{teamId}/members/{memberId}", TEAM_ID, BOB_ID));
+
+        // Assert
+        result.andExpect(status().isNoContent());
+        result.andExpect(content().string(""));
+        verify(teamService).removeMember(TEAM_ID, BOB_ID);
+    }
+
+    @Test
+    void removingAMember_withMalformedMemberId_isRejected() throws Exception {
+        // Act
+        ResultActions result = mockMvc.perform(delete("/api/teams/{teamId}/members/{memberId}", TEAM_ID, "not-a-uuid"));
+
+        // Assert
+        result.andExpect(status().isBadRequest());
+        result.andExpect(content().json("""
+            {"message": "memberId must be a valid UUID"}
+            """, true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Team not found", "Member not found"})
+    void removingAMember_withAMissingResource_returnsNotFound(String message) throws Exception {
+        // Arrange
+        doThrow(new ResourceNotFoundException(message)).when(teamService).removeMember(TEAM_ID, BOB_ID);
+
+        // Act
+        ResultActions result = mockMvc.perform(delete("/api/teams/{teamId}/members/{memberId}", TEAM_ID, BOB_ID));
+
+        // Assert
+        result.andExpect(status().isNotFound());
+        result.andExpect(content().json("{\"message\": \"%s\"}".formatted(message), true));
+    }
+
+    @Test
+    void removingTheLastMember_isRejected() throws Exception {
+        // Arrange
+        doThrow(new RetroflowException("A team must have at least one member"))
+            .when(teamService).removeMember(TEAM_ID, ALICE_ID);
+
+        // Act
+        ResultActions result = mockMvc.perform(delete("/api/teams/{teamId}/members/{memberId}", TEAM_ID, ALICE_ID));
+
+        // Assert
+        result.andExpect(status().isBadRequest());
+        result.andExpect(content().json("""
+            {"message": "A team must have at least one member"}
+            """, true));
+    }
+
+    @Test
+    void listingTeams_omitsRemovedMembers() throws Exception {
+        // Arrange
+        Team team = new Team(TEAM_ID, "Team Alpha", "team alpha", List.of(
+            new Member(ALICE_ID, "Alice", true, null),
+            new Member(BOB_ID, "Bob", false, null)), null);
+        when(teamService.listTeams()).thenReturn(List.of(team));
+
+        // Act
+        ResultActions result = mockMvc.perform(get("/api/teams"));
+
+        // Assert
+        result.andExpect(status().isOk());
+        result.andExpect(content().json("""
+            [{"id": "11111111-1111-1111-1111-111111111111", "name": "Team Alpha",
+              "members": [{"id": "22222222-2222-2222-2222-222222222222", "name": "Alice"}]}]
             """, true));
     }
 

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RetroFlow action items</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<header><span class="brand">RetroFlow</span><nav><a href="/">Teams</a><a href="/action-items.html">Action items</a></nav></header>
+<main>
+<h1>Action items</h1>
+<p id="error" class="error" role="alert" aria-live="polite"></p>
+<form id="filters" class="card row">
+<label for="priority">Priority</label>
+<select id="priority"><option value="">Any</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select>
+<label for="completed">Completed</label>
+<select id="completed"><option value="">Any</option><option value="true">Yes</option><option value="false">No</option></select>
+<button type="submit">Filter</button>
+</form>
+<section class="card"><ul id="items" class="plain"></ul><p id="empty" class="muted" hidden>No action items match.</p></section>
+</main>
+<script src="/js/api.js"></script>
+<script src="/js/action-items.js"></script>
+</body>
+</html>

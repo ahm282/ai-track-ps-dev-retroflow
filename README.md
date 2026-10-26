@@ -5,18 +5,52 @@ Miro boards, and shared Google Docs the 12 dev teams currently use to run retros
 
 ## Status
 
-Early stage. The domain model (Team, Member, Retrospective, FeedbackItem, ActionItem) and
-three repositories exist. `RetroflowController` is an empty stub, so **no REST endpoints are
-implemented yet**. The service layer and error handling are also still to be built.
+The REST API under `/api` covers teams and members, retrospectives, feedback items and action
+items. A small static web UI (plain HTML and JavaScript, no build step) is served by the same
+application at `/`. The UI is a demo extra on top of the API.
 
-**The build is currently broken:** `RetroflowBusinessRulesTest` uses `TeamService` and
-`RetrospectiveService`, which do not exist yet, so the test sources do not compile. Until the
-service layer is added, `mvn test`, `mvn verify`, a plain `mvn spring-boot:run` and
-`docker build` all fail. See the workaround under [Getting started](#getting-started).
+The agreed assumptions, field limits, error messages and response fields are in
+[`decisions.md`](decisions.md).
 
-Planned operations: create and retrieve teams, create and close retrospectives, add feedback
-items, mark action items complete, and filter action items by priority and completed status.
-The agreed assumptions and field limits are in [`decisions.md`](decisions.md).
+## API
+
+All paths are under `/api`. Errors are returned as `{"message": "..."}`. Members are identified
+by their UUID.
+
+| Method and path | What it does |
+| --- | --- |
+| `POST /teams` | Create a team with its members (201) |
+| `GET /teams` | List teams |
+| `GET /teams/{id}` | Get a team with its active members |
+| `POST /teams/{teamId}/members` | Add a member (201) |
+| `PUT /teams/{teamId}/members/{memberId}` | Rename a member |
+| `DELETE /teams/{teamId}/members/{memberId}` | Remove a member (204); the member is kept as inactive |
+| `POST /teams/{teamId}/retrospectives` | Create a retrospective; body needs `title` and `memberId` (201). The date is set by the server |
+| `GET /teams/{teamId}/retrospectives` | List a team's retrospectives |
+| `GET /retrospectives/{id}` | Get one retrospective |
+| `PUT /retrospectives/{id}/close` | Close a retrospective; body needs `memberId` |
+| `POST /retrospectives/{id}/feedback` | Add feedback; body needs `content`, `type`, `submitterId`, plus `priority` for action items (201) |
+| `GET /retrospectives/{id}/feedback` | List a retrospective's feedback |
+| `PUT /feedback/{id}` | Replace `content` and, for action items, `priority` and `completed` |
+| `DELETE /feedback/{id}` | Delete feedback (204) |
+| `PUT /action-items/{id}/complete` | Mark an action item completed |
+| `GET /action-items?priority=&completed=` | List action items, optionally filtered (case-insensitive) |
+
+Feedback `type` is `WENT_WELL`, `NEEDS_IMPROVEMENT` or `ACTION_ITEM`; `priority` is `HIGH`,
+`MEDIUM` or `LOW`. A team can have one open retrospective at a time, and a closed retrospective
+accepts no feedback changes. Swagger UI lists the same endpoints with their schemas.
+
+## Web UI
+
+Open http://localhost:8080/ once the app runs.
+
+- `/`: list teams and create one.
+- `/team.html?id=`: manage members, choose who you are acting as, list and create retrospectives.
+- `/retro.html?id=`: three columns (went well, needs improvement, action items); add, edit, delete
+  and complete items; close the retrospective. Write controls are hidden once it is closed.
+- `/action-items.html`: action items across all teams, filtered by priority and completed.
+
+The "acting as" choice is stored per team in the browser's local storage.
 
 ## Tech stack
 
@@ -34,12 +68,10 @@ From a fresh clone to a running API in a few minutes. You need **JDK 21** and **
 ```
 git clone <repo-url>
 cd ai-track-ps-dev-retroflow
-mvn -Dmaven.test.skip=true spring-boot:run
+mvn spring-boot:run
 ```
 
-`-Dmaven.test.skip=true` skips compiling the tests, which is needed only while the build is
-broken (see [Status](#status)). Once the service layer exists, plain `mvn spring-boot:run`
-works.
+To use another port, add `-Dspring-boot.run.arguments=--server.port=8081`.
 
 When the log shows `Started RetroflowApplication`, verify it works:
 
@@ -47,7 +79,8 @@ When the log shows `Started RetroflowApplication`, verify it works:
 curl http://localhost:8080/actuator/health
 ```
 
-Expected: `{"status":"UP"}`. Then open http://localhost:8080/swagger-ui.html.
+Expected: `{"status":"UP"}`. Then open http://localhost:8080/ for the web UI or
+http://localhost:8080/swagger-ui.html for Swagger UI.
 
 Local runs use the `dev` profile (H2 console enabled). No Java or Maven installed? Use the
 [dev container](#vs-code-and-dev-container).
@@ -56,6 +89,7 @@ Local runs use the `dev` profile (H2 console enabled). No Java or Maven installe
 
 | URL | What it is |
 | --- | --- |
+| http://localhost:8080/ | Web UI |
 | http://localhost:8080/swagger-ui.html | Swagger UI, lets you call endpoints from the browser |
 | http://localhost:8080/v3/api-docs | OpenAPI spec (JSON), importable into Postman or Insomnia |
 | http://localhost:8080/actuator/health | Health check |
@@ -66,10 +100,9 @@ default for local runs. Any other active profile leaves it off.
 
 ## Testing the API manually
 
-Endpoints do not exist yet, so for now only the URLs above respond. Once they are added:
-
-- **Swagger UI** is the fastest way to explore and call them, with no extra tooling.
-- **curl** works from the terminal, for example `curl -i http://localhost:8080/<path>`.
+- **Web UI** at http://localhost:8080/ runs the whole retro flow in the browser.
+- **Swagger UI** is the fastest way to explore and call the endpoints, with no extra tooling.
+- **curl** works from the terminal, for example `curl -i http://localhost:8080/api/teams`.
 - **Postman or Insomnia:** import http://localhost:8080/v3/api-docs to get every endpoint.
 - **H2 console:** inspect the tables to confirm what was persisted.
 
@@ -79,8 +112,6 @@ Endpoints do not exist yet, so for now only the URLs above respond. Once they ar
 mvn test      # unit and integration tests
 mvn verify    # tests plus the JaCoCo coverage check
 ```
-
-Both currently fail to compile until the service layer exists (see [Status](#status)).
 
 `mvn verify` fails if line coverage drops below **80%**, the same check CI runs. The HTML
 report is written to `target/site/jacoco/index.html`.
@@ -94,8 +125,7 @@ mvn test -Dtest=RetroflowBusinessRulesTest#closingARetrospective_preventsAddingF
 
 ## Running with Docker
 
-Requires Docker only, no local Java or Maven. **Currently fails at the build step** because
-`-DskipTests` still compiles the tests (see [Status](#status)); it works once they compile.
+Requires Docker only, no local Java or Maven.
 
 ```
 docker build -t retroflow .
@@ -140,15 +170,18 @@ Layered structure under `com.stackcraft.retroflow`:
 | --- | --- |
 | `entity` | JPA entities and enums (Team, Member, Retrospective, FeedbackItem, ActionItem, Priority, FeedbackType, RetrospectiveStatus) |
 | `repository` | Spring Data repositories |
-| `controller` | REST controllers (currently an empty stub) |
+| `service` | Business rules (`TeamService`, `RetrospectiveService`, `FeedbackService`) |
+| `controller` | REST controllers, mappers and the single `ApiExceptionHandler` |
+| `dto` | Request and response records |
 | `exception` | `RetroflowException` for business-rule violations |
 
-Config lives in `src/main/resources/application.properties`.
+Config lives in `src/main/resources/application.properties`. The web UI is in
+`src/main/resources/static`.
 
 ## Continuous integration
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `mvn verify` on pull requests to `master`
-and on pushes to `master` (it fails until the build is fixed). It enforces the 80% coverage gate, uploads the JaCoCo report as an
+and on pushes to `master`. It enforces the 80% coverage gate, uploads the JaCoCo report as an
 artifact, and comments the coverage on the PR. Actions are pinned to commit SHAs and kept
 current by Dependabot.
 

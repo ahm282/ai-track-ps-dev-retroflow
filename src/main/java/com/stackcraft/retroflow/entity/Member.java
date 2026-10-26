@@ -26,7 +26,7 @@ public class Member {
 
     @NotBlank
     @Size(max = 255)
-    @Pattern(regexp = "^[A-Za-z0-9]+(?: +[A-Za-z0-9]+)*$")
+    @Pattern(regexp = "^ *[A-Za-z0-9]+( +[A-Za-z0-9]+)* *$")
     @Column(nullable = false, length = 255)
     private String name;
 

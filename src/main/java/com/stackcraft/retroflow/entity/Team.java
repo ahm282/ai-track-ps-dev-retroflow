@@ -20,6 +20,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -37,12 +38,15 @@ public class Team {
 
     @NotBlank
     @Size(max = 255)
-    @Pattern(regexp = "^[A-Za-z0-9]+(?: +[A-Za-z0-9]+)*$")
+    @Pattern(regexp = "^ *[A-Za-z0-9]+( +[A-Za-z0-9]+)* *$")
     @Column(nullable = false, length = 255)
     private String name;
 
     @Column(name = "name_key", nullable = false, length = 255)
     private String nameKey;
+
+    @Column(nullable = false, updatable = false)
+    private Instant createdAt;
 
     @NotEmpty
     @OneToMany(mappedBy = "team", fetch = FetchType.LAZY,
@@ -70,11 +74,22 @@ public class Team {
         return members != null && members.stream().anyMatch(Member::isActive);
     }
 
+    public static String nameKeyOf(String name) {
+        return name == null ? null : name.strip().toLowerCase(Locale.ROOT);
+    }
+
     @PrePersist
+    private void onCreate() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+        updateNameKey();
+    }
+
     @PreUpdate
     private void updateNameKey() {
         if (name != null) {
-            nameKey = name.strip().toLowerCase(Locale.ROOT);
+            nameKey = nameKeyOf(name);
         }
     }
 
@@ -100,6 +115,14 @@ public class Team {
 
     public void setNameKey(String nameKey) {
         this.nameKey = nameKey;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 
     public List<Member> getMembers() {
