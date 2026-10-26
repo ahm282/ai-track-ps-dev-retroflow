@@ -26,6 +26,18 @@ No database setup is needed. The app uses an in-memory H2 database configured in
 `src/main/resources/application.properties`, and Hibernate creates the schema at startup.
 **All data is lost when the app stops.**
 
+## Running with Docker
+
+Build and run the image (requires Docker, no local Java or Maven needed):
+
+```
+docker build -t retroflow .
+docker run --rm -p 8080:8080 --name retroflow retroflow
+```
+
+The API is then available at http://localhost:8080. The container reports its status via
+`docker ps` (healthy/unhealthy), based on `/actuator/health`. Stop it with `docker stop retroflow`.
+
 ## Useful URLs
 
 | URL | What it is |
