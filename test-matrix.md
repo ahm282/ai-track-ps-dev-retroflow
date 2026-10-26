@@ -10,9 +10,9 @@
 - Each row covers one rule in one operation. Repeated rules are deliberately repeated across operations.
 - `Not specified` in the exception column means the documents do not name a Java exception class. It does not mean the operation should return null or silently succeed.
 - `None` means no exception is expected for that situation. Success assumes all other applicable rules are satisfied.
-- HTTP codes follow section 5: create 201, read/update 200, delete 204, validation/business-rule failure 400, missing resource 404, unsupported method 405.
-- Rows marked **DECIDED** were previously open questions. Each records the decision taken; these decisions are not in the brief or decisions.md and should be confirmed with the client.
-- A missing/null request value, invalid syntax, and business-rule failures are distinguished where their treatment needs separate decisions. Error precedence when multiple rules fail is not specified.
+- HTTP codes follow section 5: create 201, read/update 200, delete 204, validation/business-rule failure 400, missing resource 404, unsupported method 405, unsupported content type 415, unexpected error 500.
+- Rows marked **DECIDED** were previously open questions. Where such a row cites a decisions.md section, the decision is recorded there; the others are not in the brief or decisions.md and should be confirmed with the client.
+- A missing/null request value, invalid syntax, and business-rule failures are distinguished where their treatment needs separate decisions. Error precedence when multiple rules fail is listed under Cross-Cutting Decisions.
 - No authentication does not remove the documented team-membership checks. Requester/member IDs are supplied identifiers, not proof of an authenticated identity.
 - Per the brief's definition of done, business-rule expectations in every row must be enforced in the service layer, not only in controllers. Java/Spring/JPA/build tooling, frontend exclusion, startup and test-coverage requirements are delivery constraints rather than additional domain rules.
 
@@ -27,9 +27,11 @@
 | Member names are required and nonblank (section 1) | Create team | Any member name is missing, null, empty, or whitespace-only | Reject request | Not specified | 400 |
 | Member names contain only alphanumeric characters and whitespace (section 1) | Create team | Any member name contains disallowed characters | Reject request | Not specified | 400 |
 | Member name length is 1-255 (opening table; section 1) | Create team | Any member name exceeds 255 characters | Reject request | Not specified | 400 |
-| Team names are unique (section 1) | Create team | Another team has the same name | Reject request | Not specified | 400 |
-| Name comparisons ignore case (section 1; section 6) | Create team | Team name differs from an existing name only by case | Treat names as equal; reject duplicate | Not specified | 400 |
-| Name comparisons ignore surrounding whitespace (section 1; section 6) | Create team | Team name differs from an existing name only by surrounding whitespace | Treat names as equal; reject duplicate | Not specified | 400 |
+| Team names are unique (section 1) | Create team | Another team has the same name | Reject with message `Team name already exists` | Not specified | 400 |
+| Name comparisons ignore case (section 1; section 6) | Create team | Team name differs from an existing name only by case | Treat names as equal; reject with message `Team name already exists` | Not specified | 400 |
+| Name comparisons ignore surrounding whitespace (section 1; section 6) | Create team | Team name differs from an existing name only by surrounding whitespace | Treat names as equal; reject with message `Team name already exists` | Not specified | 400 |
+| Team names are unique (section 1) | Create team | Two requests with the same name race and the database rejects the second | Reject with message `Team name already exists`, not a server error | Not specified | 400 |
+| Names match one pattern (section 1) | Create team | Team or member name matches `^ *[A-Za-z0-9]+( +[A-Za-z0-9]+)* *$`, including leading or trailing spaces | Accept; request DTO and entity apply the same pattern | None | 201 |
 | Names are stored exactly as submitted (section 6) | Create team | Valid team and member names contain surrounding whitespace or mixed case | Preserve submitted values; normalize only for comparisons | None | 201 |
 | Teams retain member names (brief: Teams; section 1) | Create team | Members are supplied as names | Store their names; section 1 additionally establishes member UUID identity | None | 201 |
 | Members are identified by unique ID, not name (section 1) | Create team | Two supplied members have the same name | Allow separate members with separate IDs | None | 201 |
@@ -53,21 +55,22 @@
 | Names are stored exactly as submitted (section 6) | Rename member | Valid new name contains surrounding whitespace or mixed case | Preserve the submitted name | None | 200 |
 | A team must always have at least one member (section 1) | Add member | Membership changes | Team must still have at least one member | None | 201 |
 | A team must always have at least one member (section 1) | Rename member | Membership changes | Renaming must not remove the team's members | None | 200 |
-| Members may be removed (section 1) | Remove member | Removing the member leaves at least one member | Remove member | None | 204 |
-| A team must always have at least one member (section 1) | Remove member | Target is the team's last member | Reject removal | Not specified | 400 |
+| Members may be removed (section 1) | Remove member | Removing the member leaves at least one active member | Mark the member inactive; the row is kept | None | 204 |
+| A team must always have at least one member (section 1) | Remove member | Target is the team's last active member | Reject with message `A team must have at least one member` | Not specified | 400 |
 | Name character repertoire (section 1) | Create team | A team/member name uses non-ASCII letters or digits, tabs, newlines, or other non-space whitespace | **DECIDED:** only ASCII letters, ASCII digits and the space character are allowed; reject anything else | Not specified | 400 |
 | Name character repertoire (section 1) | Add member | Name uses non-ASCII letters or digits, tabs, newlines, or other non-space whitespace | **DECIDED:** only ASCII letters, ASCII digits and the space character are allowed; reject anything else | Not specified | 400 |
 | Name character repertoire (section 1) | Rename member | Name uses non-ASCII letters or digits, tabs, newlines, or other non-space whitespace | **DECIDED:** only ASCII letters, ASCII digits and the space character are allowed; reject anything else | Not specified | 400 |
-| Name length is measured after trimming (section 1; section 6) | Create team | Raw team/member name exceeds 255 characters but trimmed name does not | **DECIDED:** validate the trimmed length; accept | None | 201 |
-| Name length is measured after trimming (section 1; section 6) | Add member | Raw name exceeds 255 characters but trimmed name does not | **DECIDED:** validate the trimmed length; accept | None | 201 |
-| Name length is measured after trimming (section 1; section 6) | Rename member | Raw name exceeds 255 characters but trimmed name does not | **DECIDED:** validate the trimmed length; accept | None | 200 |
+| Name length is measured on the raw value (section 1) | Create team | Raw team/member name exceeds 255 characters but trimmed name does not | **DECIDED:** names are stored as submitted, so the raw value must fit 255; reject | Not specified | 400 |
+| Name length is measured on the raw value (section 1) | Add member | Raw name exceeds 255 characters but trimmed name does not | **DECIDED:** names are stored as submitted, so the raw value must fit 255; reject | Not specified | 400 |
+| Name length is measured on the raw value (section 1) | Rename member | Raw name exceeds 255 characters but trimmed name does not | **DECIDED:** names are stored as submitted, so the raw value must fit 255; reject | Not specified | 400 |
 | Membership management needs no requester (brief: Technical constraints) | Add member | Request has no requester member ID, or requester is not on the team | **DECIDED:** no requester is required or checked; proceed | None | 201 |
 | Membership management needs no requester (brief: Technical constraints) | Rename member | Request has no requester member ID, or requester is not on the team | **DECIDED:** no requester is required or checked; proceed | None | 200 |
 | Membership management needs no requester (brief: Technical constraints) | Remove member | Request has no requester member ID, or requester is not on the team | **DECIDED:** no requester is required or checked; proceed | None | 204 |
-| Members are addressed within their team | Rename member | Member exists, but belongs to another team than the route identifies | **DECIDED:** treat as a missing nested resource; reject with member-not-found message | Not specified | 404 |
-| Members are addressed within their team | Remove member | Member exists, but belongs to another team than the route identifies | **DECIDED:** treat as a missing nested resource; reject with member-not-found message | Not specified | 404 |
-| Removal keeps history | Remove member | Member has submitted feedback or action items | **DECIDED:** removal succeeds; existing feedback is kept with the submitter name recorded at submission | None | 204 |
-| UUID identity overrides name matching (section 1; section 6) | Resolve member identity | A normalized name matches multiple distinct member IDs | **DECIDED:** members are always resolved by UUID; normalized names are used only for comparison such as team-name uniqueness, never to pick a member | None | Not applicable |
+| Members are addressed within their team | Rename member | Member exists, but belongs to another team than the route identifies | **DECIDED:** treat as a missing nested resource; reject with message `Member not found` | Not specified | 404 |
+| Members are addressed within their team | Remove member | Member exists, but belongs to another team than the route identifies | **DECIDED:** treat as a missing nested resource; reject with message `Member not found` | Not specified | 404 |
+| Removed members are not listed (section 1; section 5) | Get team | Team has an inactive member | **DECIDED (section 1):** omit inactive members from `members` | None | 200 |
+| Removal keeps history | Remove member | Member has submitted feedback or action items | **DECIDED (section 1):** removal succeeds; the member is kept as inactive and existing feedback keeps its submitter and the submitter name recorded at submission | None | 204 |
+| UUID identity overrides name matching (section 1; section 6) | Resolve member identity | A normalized name matches multiple distinct member IDs | **DECIDED (section 3):** the HTTP API resolves members by UUID only; the service-layer name lookup used by the inherited tests rejects the name with message `Member name is ambiguous` | Not specified | 400 |
 
 ## Retrospectives
 
@@ -86,15 +89,17 @@
 | Duplicate closed retrospectives are allowed (section 6) | Create retrospective | Resulting CLOSED retrospective shares title/date with another CLOSED retrospective | Allow duplicate; do not enforce title/date uniqueness | None | 201 |
 | Duplicates are allowed subject to the one-OPEN rule (section 6) | Create retrospective | New OPEN retrospective shares title/date with a CLOSED retrospective and team has no OPEN retrospective | Allow duplicate; title/date do not block creation | None | 201 |
 | Retrospective IDs are generated UUIDs (section 5) | Create retrospective | Creation succeeds | Assign a generated UUID | None | 201 |
-| Requester must be identified by member ID (section 1; section 2) | Create retrospective | Member ID is missing | Reject request | Not specified | 400 |
-| Requester must belong to target team (section 2; section 5) | Create retrospective | Supplied member exists but belongs to a different team | Reject as non-member action | Not specified | 400 |
+| Requester must be identified by member ID (section 1; section 2) | Create retrospective | `memberId` is missing from the request body | Reject request | Not specified | 400 |
+| Requester must belong to target team (section 2; section 5) | Create retrospective | Supplied member exists but belongs to a different team | Reject with message `Member is not part of this team` | Not specified | 400 |
+| Inactive members are non-members (section 1) | Create retrospective | Supplied member was removed from the team | Reject with message `Member is not part of this team` | Not specified | 400 |
 | Any team member may create a retrospective (brief: Retrospectives) | Create retrospective | Requester belongs to the team but has no special role | Allow creation if other rules pass; no privileged role is required | None | 201 |
 | Valid retrospectives can be created (section 2; section 5) | Create retrospective | Valid title, existing team, authorized member, and permitted status | Create retrospective | None | 201 |
 | Retrospectives can be retrieved (section 5) | Get retrospective | Retrospective exists | Return retrospective data | None | 200 |
 | Retrospectives can be listed by team (section 5) | List team retrospectives | Team exists | Return its retrospectives without required pagination | None | 200 |
 | OPEN retrospectives can be closed (section 2) | Close retrospective | Retrospective is OPEN and requester belongs to its team | Change status to CLOSED | None | 200 |
-| Requester must be identified by member ID (section 1; section 2) | Close retrospective | Member ID is missing | Reject request | Not specified | 400 |
-| Requester must belong to owning team (section 2; section 5) | Close retrospective | Supplied member exists but belongs to a different team | Reject as non-member action | Not specified | 400 |
+| Requester must be identified by member ID (section 1; section 2) | Close retrospective | `memberId` is missing from the request body | Reject request | Not specified | 400 |
+| Requester must belong to owning team (section 2; section 5) | Close retrospective | Supplied member exists but belongs to a different team | Reject with message `Member is not part of this team` | Not specified | 400 |
+| Inactive members are non-members (section 1) | Close retrospective | Supplied member was removed from the team | Reject with message `Member is not part of this team` | Not specified | 400 |
 | Any team member may close a retrospective (brief: Retrospectives) | Close retrospective | Requester belongs to the team but is not the creator and has no special role | Allow closure if retrospective is OPEN; no creator-only restriction | None | 200 |
 | Closing twice is forbidden (section 2) | Close retrospective | Retrospective is already CLOSED | Reject with message `Retrospective already closed` | Not specified | 400 |
 | Retrospective title is immutable (section 2) | Modify retrospective title | Attempt to change title after creation | Reject change; no editing route is specified | Not specified | 400 for rule violation; 405 if method unsupported |
@@ -106,7 +111,7 @@
 | Null status means omitted (section 2) | Create retrospective | Status is explicitly null | **DECIDED:** treat as omitted; default to OPEN | None | 201 |
 | One-OPEN rule counts OPEN retrospectives only (brief: Retrospectives; section 6) | Create retrospective | Team already has an OPEN retrospective and client requests CLOSED | **DECIDED:** allow; the rule restricts only the number of OPEN retrospectives | None | 201 |
 | Closed retrospectives cannot be reopened (brief: Retrospectives) | Reopen retrospective | Client attempts CLOSED to OPEN | **DECIDED:** no reopen operation exists and status is not client-modifiable after creation; any attempt is rejected as a rule violation | Not specified | 400 |
-| Closing route is PUT /api/retrospectives/{id}/close | Close retrospective | A binding route and HTTP method are needed | **DECIDED:** use PUT with the /api prefix, matching the implemented controller instead of section 5's POST suggestion; POST on this path is rejected as unsupported | Not specified | 200 for successful close; 405 for POST |
+| Closing route is PUT /api/retrospectives/{id}/close (section 5) | Close retrospective | A binding route and HTTP method are needed | **DECIDED (section 5):** use PUT with the /api prefix; POST on this path is rejected with message `Method POST is not supported for this endpoint` | Not specified | 200 for successful close; 405 for POST |
 
 ## Feedback
 
@@ -116,37 +121,38 @@ Action items are specialized feedback, so feedback rules also apply to them. Act
 | --- | --- | --- | --- | --- | --- |
 | Feedback can be created while OPEN (section 3) | Create feedback | Retrospective is OPEN and request is otherwise valid | Create feedback | None | 201 |
 | Feedback belongs to a retrospective (brief: Feedback items) | Create feedback | Creation succeeds for the target retrospective | Associate feedback with that retrospective | None | 201 |
-| Closed feedback is read-only (section 3) | Create feedback | Retrospective is CLOSED | Reject addition | Not specified | 400 |
+| Closed feedback is read-only (section 3) | Create feedback | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Feedback can be read while OPEN (section 3) | List retrospective feedback | Retrospective is OPEN | Return its feedback | None | 200 |
 | Closed feedback remains readable (section 3) | List retrospective feedback | Retrospective is CLOSED | Return its feedback without modification | None | 200 |
 | Feedback can be modified while OPEN (section 3) | Modify feedback | Retrospective is OPEN and requested change is valid | Update feedback | None | 200 |
-| Closed feedback cannot be modified (section 3) | Modify feedback | Retrospective is CLOSED | Reject modification | Not specified | 400 |
+| Closed feedback cannot be modified (section 3) | Modify feedback | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Feedback can be deleted while OPEN (section 3) | Delete feedback | Retrospective is OPEN | Delete feedback | None | 204 |
-| Closed feedback cannot be deleted (section 3) | Delete feedback | Retrospective is CLOSED | Reject deletion | Not specified | 400 |
+| Closed feedback cannot be deleted (section 3) | Delete feedback | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Content is required and nonblank (section 3) | Create feedback | Content is missing, null, empty, or whitespace-only | Reject request | Not specified | 400 |
-| Feedback content maximum is 4000 (opening table; section 3) | Create feedback | Content is 256-4000 characters | **DECIDED:** 4000 applies to feedback; section 1's 255 applies to names | None | 201 |
-| Feedback exceeds every documented maximum | Create feedback | Content exceeds 4000 characters | Reject request under either stated limit | Not specified | 400 |
+| Feedback content maximum is 4000 (opening table; section 3) | Create feedback | Content is 256-4000 characters | **DECIDED (section 1):** 4000 applies to feedback and action-item content; 255 applies to names and titles | None | 201 |
+| Feedback content maximum is 4000 (opening table; section 1) | Create feedback | Content exceeds 4000 characters | Reject request | Not specified | 400 |
 | Submitter ID is required (section 3) | Create feedback | Submitter ID is missing | Reject request | Not specified | 400 |
-| Submitter must belong to retrospective's team (section 3) | Create feedback | Submitter exists but is not a member of that team | Reject submission | Not specified | 400 |
+| Submitter must belong to retrospective's team (section 3) | Create feedback | Submitter exists but is not a member of that team | Reject with message `Member is not part of this team` | Not specified | 400 |
+| Inactive members are non-members (section 1) | Create feedback | Submitter was removed from the team | Reject with message `Member is not part of this team` | Not specified | 400 |
 | Feedback type is required (section 3) | Create feedback | Type is missing or null | Reject request | Not specified | 400 |
 | Feedback types are WENT_WELL, NEEDS_IMPROVEMENT, ACTION_ITEM (brief: Feedback items) | Create feedback | Type is an unrecognized value other than the conflicting POSITIVE/NEGATIVE examples | Reject invalid type | Not specified | 400 |
 | Non-action feedback types are defined by the brief (brief: Feedback items) | Create feedback | Type is WENT_WELL or NEEDS_IMPROVEMENT and other fields are valid | Accept the documented non-action type | None | 201 |
 | The brief's feedback types are authoritative (brief: Feedback items) | Create feedback | Type is POSITIVE or NEGATIVE | **DECIDED:** section 3's names are illustrative only; reject, no aliases | Not specified | 400 |
 | Feedback records the submitting member's name (brief: Feedback items; section 3) | Create feedback | Submission succeeds using the member ID required by section 3 | **DECIDED:** store the submitter's name as a snapshot at submission; later renames do not change it | None | 201 |
-| Non-action feedback must not carry priority (section 4) | Create feedback | Non-action type includes priority | Reject request | Not specified | 400 |
-| Non-action feedback must not carry completed (section 4) | Create feedback | Non-action type includes completed, including false | Reject request | Not specified | 400 |
+| Non-action feedback must not carry priority (section 4) | Create feedback | Non-action type includes priority | Reject with message `Priority and completed are only allowed for action items` | Not specified | 400 |
+| Non-action feedback must not carry completed (section 4) | Create feedback | Non-action type includes completed, including false | Reject with message `Priority and completed are only allowed for action items` | Not specified | 400 |
 | Duplicate feedback content is allowed (section 6) | Create feedback | Another feedback item has identical content | Allow duplicate | None | 201 |
 | Feedback IDs are generated UUIDs (section 5) | Create feedback | Creation succeeds | Assign a generated UUID | None | 201 |
 | Content remains nonblank (section 3) | Modify feedback | Supplied replacement content is null, empty, or whitespace-only | Reject invalid content | Not specified | 400 |
 | Feedback content maximum is 4000 (opening table; section 3) | Modify feedback | Replacement content is 256-4000 characters | **DECIDED:** accept | None | 200 |
-| Feedback exceeds every documented maximum | Modify feedback | Replacement content exceeds 4000 characters | Reject invalid content under either stated limit | Not specified | 400 |
+| Feedback content maximum is 4000 (opening table; section 1) | Modify feedback | Replacement content exceeds 4000 characters | Reject invalid content | Not specified | 400 |
 | Feedback type is immutable (section 3) | Modify feedback | Attempt to change type, including conversion to/from ACTION_ITEM | Reject type change | Not specified | 400 |
 | The brief's feedback types are authoritative (brief: Feedback items) | Modify feedback | An update supplies POSITIVE or NEGATIVE as the type | **DECIDED:** reject as an invalid type | Not specified | 400 |
-| Non-action feedback must not carry priority (section 4) | Modify feedback | Non-action feedback update supplies priority | Reject request | Not specified | 400 |
-| Non-action feedback must not carry completed (section 4) | Modify feedback | Non-action feedback update supplies completed | Reject request | Not specified | 400 |
+| Non-action feedback must not carry priority (section 4) | Modify feedback | Non-action feedback update supplies priority | Reject with message `Priority and completed are only allowed for action items` | Not specified | 400 |
+| Non-action feedback must not carry completed (section 4) | Modify feedback | Non-action feedback update supplies completed | Reject with message `Priority and completed are only allowed for action items` | Not specified | 400 |
 | Duplicate feedback content is allowed (section 6) | Modify feedback | Replacement content equals another item's content | Allow duplicate content | None | 200 |
 | Feedback retrieval is scoped to a retrospective (section 3) | List retrospective feedback | Existing retrospective ID is supplied | Return feedback for that retrospective, not a global list | None | 200 |
-| No global feedback endpoint is required (section 3) | List global feedback | A global feedback list is requested | **DECIDED:** no such route exists; unmapped path | Not specified | 404 |
+| No global feedback endpoint is required (section 3) | List global feedback | A global feedback list is requested | **DECIDED:** no such route exists; reject with message `No endpoint GET /api/feedback` | Not specified | 404 |
 | Update requires content only (section 3) | Modify feedback | Content is omitted | **DECIDED:** content is required on update; reject | Not specified | 400 |
 | Update requires content only (section 3) | Modify feedback | Type or submitterId is omitted | **DECIDED:** keep the existing values; accept | None | 200 |
 | Feedback editing needs no requester (brief: Technical constraints) | Modify feedback | Requester is not the submitter or is not on the team | **DECIDED:** no requester is required or checked; any caller may edit | None | 200 |
@@ -164,10 +170,11 @@ Action items are specialized feedback, so feedback rules also apply to them. Act
 | Action items record the submitting member's name (brief: Feedback items; Action items; section 3) | Create action item | Submission succeeds using submitterId | **DECIDED:** store the submitter's name as a snapshot at submission; later renames do not change it | None | 201 |
 | Action-item content length is 1-4000 (opening table) | Create action item | Content is missing, null, empty, or whitespace-only | Reject request; nonblank feedback rule also applies | Not specified | 400 |
 | Feedback and action-item content maximum is 4000 (opening table) | Create action item | Content is 256-4000 characters | **DECIDED:** accept | None | 201 |
-| Action-item content exceeds every documented maximum | Create action item | Content exceeds 4000 characters | Reject request | Not specified | 400 |
+| Action-item content maximum is 4000 (opening table; section 1) | Create action item | Content exceeds 4000 characters | Reject request | Not specified | 400 |
 | Submitter ID is required for feedback (section 3; section 4) | Create action item | Submitter ID is missing | Reject request | Not specified | 400 |
-| Submitter must belong to retrospective's team (section 3; section 4) | Create action item | Submitter exists but is not a member of that team | Reject submission | Not specified | 400 |
-| Action items require priority (section 4) | Create action item | Priority is missing or null | Reject request | Not specified | 400 |
+| Submitter must belong to retrospective's team (section 3; section 4) | Create action item | Submitter exists but is not a member of that team | Reject with message `Member is not part of this team` | Not specified | 400 |
+| Inactive members are non-members (section 1) | Create action item | Submitter was removed from the team | Reject with message `Member is not part of this team` | Not specified | 400 |
+| Action items require priority (section 4) | Create action item | Priority is missing or null | Reject with message `Priority is required for action items` | Not specified | 400 |
 | Completed defaults to false (section 4) | Create action item | Completed is omitted | **DECIDED:** default to false; accept | None | 201 |
 | Default initial completion is false (section 4) | Create action item | Default completion state is applied | Initialize as incomplete; whether omission is allowed remains unresolved above | None | 201 if creation accepted |
 | Action items start incomplete (section 4) | Create action item | Client supplies completed=true | **DECIDED:** initial state must be false; reject | Not specified | 400 |
@@ -175,41 +182,41 @@ Action items are specialized feedback, so feedback rules also apply to them. Act
 | Priority is LOW, MEDIUM or HIGH (brief: Action items; Technical constraints) | Create action item | Supplied priority is outside LOW/MEDIUM/HIGH | Reject invalid priority with a meaningful message | Not specified | 400 |
 | Completion is boolean (brief: Action items; Technical constraints) | Create action item | Supplied completed value cannot represent a boolean | Reject invalid input; accepted textual/numeric coercions are not specified | Not specified | 400 |
 | Action items may be added while OPEN (section 3; section 4) | Create action item | Retrospective is OPEN and fields are valid | Create action item | None | 201 |
-| Closed feedback is read-only (section 3; section 4) | Create action item | Retrospective is CLOSED | Reject addition | Not specified | 400 |
+| Closed feedback is read-only (section 3; section 4) | Create action item | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Duplicate feedback content is allowed (section 6) | Create action item | Another feedback/action item has identical content | Allow duplicate content | None | 201 |
 | Feedback IDs are generated UUIDs (section 5) | Create action item | Creation succeeds | Assign a generated UUID as specialized feedback | None | 201 |
 | Action-item content may be edited while OPEN (section 4) | Modify action-item content | Retrospective is OPEN and replacement content is valid | Update content without resetting completion | None | 200 |
 | Action-item content remains nonblank (opening table; section 3; section 4) | Modify action-item content | Replacement content is null, empty, or whitespace-only | Reject request | Not specified | 400 |
 | Feedback and action-item content maximum is 4000 (opening table) | Modify action-item content | Replacement content is 256-4000 characters | **DECIDED:** accept | None | 200 |
-| Action-item content exceeds every documented maximum | Modify action-item content | Replacement content exceeds 4000 characters | Reject request | Not specified | 400 |
-| Closed feedback cannot be modified (section 3; section 4) | Modify action-item content | Retrospective is CLOSED | Reject modification | Not specified | 400 |
+| Action-item content maximum is 4000 (opening table; section 1) | Modify action-item content | Replacement content exceeds 4000 characters | Reject request | Not specified | 400 |
+| Closed feedback cannot be modified (section 3; section 4) | Modify action-item content | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Completed action items may still have content edited while OPEN (section 4) | Modify action-item content | Item is already completed and retrospective is OPEN | Allow valid edit; keep completed=true | None | 200 |
 | Duplicate feedback content is allowed (section 6) | Modify action-item content | Replacement content equals another item's content | Allow duplicate content | None | 200 |
 | Action-item priority may be edited while OPEN (section 4) | Modify action-item priority | Retrospective is OPEN and supplied priority is valid | Update priority without resetting completion | None | 200 |
-| Closed feedback cannot be modified (section 3; section 4) | Modify action-item priority | Retrospective is CLOSED | Reject modification | Not specified | 400 |
+| Closed feedback cannot be modified (section 3; section 4) | Modify action-item priority | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Completed action items may still have priority edited while OPEN (section 4) | Modify action-item priority | Item is already completed and retrospective is OPEN | Allow valid edit; keep completed=true | None | 200 |
-| Action items must retain priority (section 4) | Modify action-item priority | Update removes or nulls priority | Reject request | Not specified | 400 |
+| Action items must retain priority (section 4) | Modify action-item priority | Update removes or nulls priority | Reject with message `Priority is required for action items` | Not specified | 400 |
 | Priority is LOW, MEDIUM or HIGH (brief: Action items; Technical constraints) | Modify action-item priority | Supplied priority is outside LOW/MEDIUM/HIGH | Reject invalid priority with a meaningful message | Not specified | 400 |
 | Feedback type is immutable (section 3; section 4) | Modify action-item type | Attempt to change ACTION_ITEM to another type | Reject conversion | Not specified | 400 |
-| Closed feedback cannot be modified (section 3; section 4) | Modify action-item type | Retrospective is CLOSED | Reject modification; immutability of type also independently forbids conversion | Not specified | 400 |
+| Closed feedback cannot be modified (section 3; section 4) | Modify action-item type | Retrospective is CLOSED | Reject with message `Retrospective is closed`; immutability of type also independently forbids conversion | Not specified | 400 |
 | Action items may become complete while OPEN (section 4) | Complete action item | Item is incomplete and retrospective is OPEN | Change completed from false to true | None | 200 |
-| Closed action items cannot be completed (section 4) | Complete action item | Retrospective is CLOSED | Reject modification | Not specified | 400 |
+| Closed action items cannot be completed (section 4) | Complete action item | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Completion is idempotent (section 4) | Complete action item | Item is already completed and retrospective is OPEN | **DECIDED:** succeed with no change | None | 200 |
-| Completed action items cannot be uncompleted (section 4) | Uncomplete action item | Attempt true to false while retrospective is OPEN | Reject with message `Action item cannot be uncompleted` | Not specified | 400 |
-| Closed feedback cannot be modified (section 3; section 4) | Uncomplete action item | Retrospective is CLOSED | **DECIDED:** the closed-retrospective check comes first; reject as a closed-retrospective modification | Not specified | 400 |
+| Completed action items cannot be uncompleted (section 4) | Uncomplete action item | `PUT /api/feedback/{id}` with `completed: false` on a completed item while retrospective is OPEN | Reject with message `Action item cannot be uncompleted` | Not specified | 400 |
+| Closed feedback cannot be modified (section 3; section 4) | Uncomplete action item | Retrospective is CLOSED | **DECIDED:** the closed-retrospective check comes first; reject with message `Retrospective is closed` | Not specified | 400 |
 | Completion cannot be reset through content edits (section 4) | Modify action-item content | Edit also attempts completed=true to completed=false | Reject uncompletion with message `Action item cannot be uncompleted` | Not specified | 400 |
 | Completion cannot be reset through priority edits (section 4) | Modify action-item priority | Edit also attempts completed=true to completed=false | Reject uncompletion with message `Action item cannot be uncompleted` | Not specified | 400 |
 | Completion is boolean (brief: Action items; Technical constraints) | Modify action-item content | Edit also supplies a completed value that cannot represent a boolean | Reject invalid input; accepted coercions are not specified | Not specified | 400 |
 | Completion is boolean (brief: Action items; Technical constraints) | Modify action-item priority | Edit also supplies a completed value that cannot represent a boolean | Reject invalid input; accepted coercions are not specified | Not specified | 400 |
 | No dedicated uncomplete operation (section 4) | Uncomplete action item | Update supplies completed=false for an item that is already incomplete, retrospective OPEN | **DECIDED:** no separate route exists; the update is a no-op success | None | 200 |
 | Action items may be deleted while OPEN (section 4) | Delete action item | Retrospective is OPEN, whether item is complete or incomplete | Delete item | None | 204 |
-| Closed feedback cannot be deleted (section 3; section 4) | Delete action item | Retrospective is CLOSED | Reject deletion | Not specified | 400 |
+| Closed feedback cannot be deleted (section 3; section 4) | Delete action item | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 | Action-item editing needs no requester (brief: Technical constraints) | Modify action-item content | Requester is not the submitter or is not on the team | **DECIDED:** no requester is required or checked | None | 200 |
 | Action-item editing needs no requester (brief: Technical constraints) | Modify action-item priority | Requester is not the submitter or is not on the team | **DECIDED:** no requester is required or checked | None | 200 |
 | Completion needs no requester (brief: Technical constraints) | Complete action item | Requester is not the submitter or is not on the team | **DECIDED:** no requester is required or checked | None | 200 |
 | Deletion needs no requester (brief: Technical constraints) | Delete action item | Requester is not the submitter or is not on the team | **DECIDED:** no requester is required or checked | None | 204 |
 | Submitter is immutable | Modify action-item submitter | Update supplies a submitterId different from the existing one | **DECIDED:** reject the change | Not specified | 400 |
-| Closed feedback is wholly read-only (section 3; section 4) | Modify action-item submitter | Retrospective is CLOSED | Reject any attempted reassignment regardless of the unresolved OPEN-state policy | Not specified | 400 |
+| Closed feedback is wholly read-only (section 3; section 4) | Modify action-item submitter | Retrospective is CLOSED | Reject with message `Retrospective is closed` | Not specified | 400 |
 
 ## Action-Item Queries
 
@@ -248,32 +255,32 @@ These rows separate absent resources from existing resources that violate a busi
 
 | Rule | Operation | Situation | Expected result | Exception | HTTP status |
 | --- | --- | --- | --- | --- | --- |
-| Missing team is not found (section 5) | Get team | Team UUID is valid but absent | Reject with team-not-found message | Not specified | 404 |
-| Missing team is not found (section 5) | Add member | Target team is absent | Reject with team-not-found message | Not specified | 404 |
-| Missing team is not found (section 5) | Rename member | Target team is absent | Reject with team-not-found message | Not specified | 404 |
-| Missing member is not found (section 5) | Rename member | Target member is absent | Reject with member-not-found message | Not specified | 404 |
-| Missing team is not found (section 5) | Remove member | Target team is absent | Reject with team-not-found message | Not specified | 404 |
-| Missing member is not found (section 5) | Remove member | Target member is absent | Reject with member-not-found message | Not specified | 404 |
-| Missing team is not found (section 5) | Create retrospective | Target team is absent | Reject with team-not-found message | Not specified | 404 |
-| Missing member is not found (section 5) | Create retrospective | Supplied requester member UUID does not exist | Reject with member-not-found message | Not specified | 404 |
-| Missing team is not found (section 5) | List team retrospectives | Target team is absent | Reject with team-not-found message | Not specified | 404 |
+| Missing team is not found (section 5) | Get team | Team UUID is valid but absent | Reject with message `Team not found` | Not specified | 404 |
+| Missing team is not found (section 5) | Add member | Target team is absent | Reject with message `Team not found` | Not specified | 404 |
+| Missing team is not found (section 5) | Rename member | Target team is absent | Reject with message `Team not found` | Not specified | 404 |
+| Missing member is not found (section 5) | Rename member | Target member is absent | Reject with message `Member not found` | Not specified | 404 |
+| Missing team is not found (section 5) | Remove member | Target team is absent | Reject with message `Team not found` | Not specified | 404 |
+| Missing member is not found (section 5) | Remove member | Target member is absent | Reject with message `Member not found` | Not specified | 404 |
+| Missing team is not found (section 5) | Create retrospective | Target team is absent | Reject with message `Team not found` | Not specified | 404 |
+| Missing member is not found (section 5) | Create retrospective | Supplied requester member UUID does not exist | Reject with message `Member not found` | Not specified | 404 |
+| Missing team is not found (section 5) | List team retrospectives | Target team is absent | Reject with message `Team not found` | Not specified | 404 |
 | Missing retrospective is not found (section 5) | Get retrospective | Retrospective is absent | Reject with message `Retrospective not found` | Not specified | 404 |
 | Missing retrospective is not found (section 5) | Close retrospective | Retrospective is absent | Reject with message `Retrospective not found` | Not specified | 404 |
-| Missing member is not found (section 5) | Close retrospective | Supplied requester member UUID does not exist | Reject with member-not-found message | Not specified | 404 |
+| Missing member is not found (section 5) | Close retrospective | Supplied requester member UUID does not exist | Reject with message `Member not found` | Not specified | 404 |
 | Missing retrospective is not found (section 5) | Create feedback | Parent retrospective is absent | Reject with message `Retrospective not found` | Not specified | 404 |
-| Missing member is not found (section 5) | Create feedback | Supplied submitter UUID does not exist | Reject with member-not-found message | Not specified | 404 |
+| Missing member is not found (section 5) | Create feedback | Supplied submitter UUID does not exist | Reject with message `Member not found` | Not specified | 404 |
 | Missing retrospective is not found (section 5) | List retrospective feedback | Parent retrospective is absent | Reject with message `Retrospective not found` | Not specified | 404 |
-| Missing feedback is not found (section 5) | Modify feedback | Feedback item is absent | Reject with feedback-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Delete feedback | Feedback item is absent | Reject with feedback-not-found message | Not specified | 404 |
+| Missing feedback is not found (section 5) | Modify feedback | Feedback item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Delete feedback | Feedback item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
 | Missing retrospective is not found (section 5) | Create action item | Parent retrospective is absent | Reject with message `Retrospective not found` | Not specified | 404 |
-| Missing member is not found (section 5) | Create action item | Supplied submitter UUID does not exist | Reject with member-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Modify action-item content | Action item is absent | Reject with a resource-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Modify action-item priority | Action item is absent | Reject with a resource-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Modify action-item type | Action item is absent | Reject with a resource-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Modify action-item submitter | Action item is absent | Reject with a resource-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Complete action item | Action item is absent | Reject with a resource-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Uncomplete action item | Update with completed=false targets an absent action item | **DECIDED:** no dedicated route; the update route rejects with a resource-not-found message | Not specified | 404 |
-| Missing feedback is not found (section 5) | Delete action item | Action item is absent | Reject with a resource-not-found message | Not specified | 404 |
+| Missing member is not found (section 5) | Create action item | Supplied submitter UUID does not exist | Reject with message `Member not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Modify action-item content | Action item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Modify action-item priority | Action item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Modify action-item type | Action item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Modify action-item submitter | Action item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Complete action item | Action item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Uncomplete action item | Update with completed=false targets an absent action item | **DECIDED:** no dedicated route; the update route rejects with message `Feedback item not found` | Not specified | 404 |
+| Missing feedback is not found (section 5) | Delete action item | Action item is absent | Reject with message `Feedback item not found` | Not specified | 404 |
 | Identifiers are UUIDs (section 5) | Get team | Team ID is malformed | Reject invalid input | Not specified | 400 |
 | Identifiers are UUIDs (section 5) | Add member | Team ID is malformed | Reject invalid input | Not specified | 400 |
 | Identifiers are UUIDs (section 5) | Rename member | Team or member ID is malformed | Reject invalid input | Not specified | 400 |
@@ -301,19 +308,19 @@ These are API/operational requirements rather than domain invariants, included s
 
 | Rule | Operation | Situation | Expected result | Exception | HTTP status |
 | --- | --- | --- | --- | --- | --- |
-| Related objects are excluded from responses (section 5) | Create team | Creation succeeds | **DECIDED:** return the team id and name plus members as objects with id and name; no retrospectives | None | 201 |
-| Related objects are excluded from responses (section 5) | Get team | Team exists | **DECIDED:** same shape as create: team id and name plus members with id and name; no retrospectives | None | 200 |
+| Related objects are excluded from responses (section 5) | Create team | Creation succeeds | **DECIDED (section 5):** return `id`, `name` and `members` (active members only, each `id`, `name`); no retrospectives | None | 201 |
+| Related objects are excluded from responses (section 5) | Get team | Team exists | **DECIDED (section 5):** same shape as create; active members only; no retrospectives | None | 200 |
 | Related objects are excluded from responses (section 5) | List teams | Listing succeeds | Return team data without related-object expansion | None | 200 |
 | Related objects are excluded from responses (section 5) | Add member | Creation succeeds | Do not embed related team/other objects | None | 201 |
 | Related objects are excluded from responses (section 5) | Rename member | Update succeeds | Do not embed related team/other objects | None | 200 |
-| Related objects are excluded from responses (section 5) | Create retrospective | Creation succeeds | Do not embed related team or feedback objects | None | 201 |
+| Related objects are excluded from responses (section 5) | Create retrospective | Creation succeeds | **DECIDED (section 5):** return `id`, `title`, `date`, `status`, `teamId`; no team or feedback objects | None | 201 |
 | Related objects are excluded from responses (section 5) | Get retrospective | Retrospective exists | Return retrospective data only; retrieve feedback separately | None | 200 |
 | Related objects are excluded from responses (section 5) | List team retrospectives | Listing succeeds | Do not embed related team or feedback objects | None | 200 |
 | Related objects are excluded from responses (section 5) | Close retrospective | Update succeeds | Do not embed related team or feedback objects | None | 200 |
-| Related objects are excluded from responses (section 5) | Create feedback | Creation succeeds | Do not embed related retrospective or member objects | None | 201 |
+| Related objects are excluded from responses (section 5) | Create feedback | Creation succeeds | **DECIDED (section 5):** return `id`, `retrospectiveId`, `content`, `type`, `submitterId`, `submitterName`; omit `priority` and `completed` | None | 201 |
 | Related objects are excluded from responses (section 5) | List retrospective feedback | Listing succeeds | Do not embed related retrospective or member objects | None | 200 |
 | Related objects are excluded from responses (section 5) | Modify feedback | Update succeeds | Do not embed related retrospective or member objects | None | 200 |
-| Related objects are excluded from responses (section 5) | Create action item | Creation succeeds | Do not embed related retrospective or member objects | None | 201 |
+| Related objects are excluded from responses (section 5) | Create action item | Creation succeeds | **DECIDED (section 5):** same shape as feedback, plus `priority` and `completed` | None | 201 |
 | Related objects are excluded from responses (section 5) | Modify action-item content | Update succeeds | Do not embed related retrospective or member objects | None | 200 |
 | Related objects are excluded from responses (section 5) | Modify action-item priority | Update succeeds | Do not embed related retrospective or member objects | None | 200 |
 | Related objects are excluded from responses (section 5) | Complete action item | Update succeeds | Do not embed related retrospective or member objects | None | 200 |
@@ -335,7 +342,10 @@ These are API/operational requirements rather than domain invariants, included s
 | Closure audit history is not required (section 6) | Close retrospective | Closing succeeds | No requirement to record who closed it or when | None | 200 |
 | Completion audit history is not required (section 6) | Complete action item | Completion succeeds | No requirement to record who completed it or when | None | 200 |
 | Persistence across restarts is not required (section 6) | Restart application | In-memory H2 data existed before restart | Data need not survive restart | None | Not applicable |
-| Unsupported methods use 405 (section 5) | Invoke unsupported HTTP method | Path exists but method is not supported | Reject method; this is not a domain operation | Not specified | 405 |
+| Unsupported methods use 405 (section 5) | Invoke unsupported HTTP method | Path exists but method is not supported | Reject with message `Method <METHOD> is not supported for this endpoint` | Not specified | 405 |
+| Unknown routes use 404 (section 5) | Invoke unknown route | No endpoint matches the path | Reject with message `No endpoint <METHOD> <path>` | Not specified | 404 |
+| Only JSON is accepted (section 5) | Send request body | Content type is not application/json | Reject with message `Content type must be application/json` | Not specified | 415 |
+| Errors never leak internals (section 5) | Any operation | An unexpected server error occurs | Reject with message `Unexpected error`; no stack trace | Not specified | 500 |
 
 ## Trusted Access Without Authentication
 
@@ -367,6 +377,22 @@ The brief's Teams and Technical constraints sections explicitly require no authe
 | No authentication is required (brief: Technical constraints) | Filter action items by priority | Trusted caller supplies no login credentials or token | Do not require authentication | None | 200 |
 | No authentication is required (brief: Technical constraints) | Filter action items by priority and completion | Trusted caller supplies no login credentials or token | Do not require authentication | None | 200 |
 
+## Contract Test Coverage
+
+Each endpoint gets a contract test for success, invalid input (400), missing resource (404) and business-rule violation (400). The cases below cannot occur for their endpoint and get no test.
+
+| Endpoint | Cases without a test | Reason |
+| --- | --- | --- |
+| `POST /api/teams` | 404 | No path or body reference to an existing resource |
+| `GET /api/teams` | 400, 404, rule | No input and no business rule |
+| `GET /api/teams/{id}` | rule | Read only |
+| `POST /api/teams/{id}/members` | rule | Duplicate member names are allowed; no rule can fail |
+| `PUT /api/teams/{id}/members/{memberId}` | rule | Duplicate member names are allowed; no rule can fail |
+| `GET /api/teams/{id}/retrospectives` | rule | Read only |
+| `GET /api/retrospectives/{id}` | rule | Read only |
+| `GET /api/retrospectives/{id}/feedback` | rule | Read only |
+| `GET /api/action-items` | 404, rule | Query across all retrospectives; no resource in the path and read only |
+
 ## Cross-Cutting Decisions
 
 **DECIDED:**
@@ -377,8 +403,8 @@ The brief's Teams and Technical constraints sections explicitly require no authe
 - Client-supplied IDs, and other server-generated fields in a request body, are ignored.
 - An action-specific operation on feedback that is not an ACTION_ITEM is treated as not found (404).
 - Team, team-retrospective and retrospective-feedback lists are ordered by creation, oldest first, ties by ID ascending.
-- Member removal physically deletes the member; historical feedback keeps the submitter name recorded at submission.
-- Routes: section 5 paths with the `/api` prefix, closing retrospectives via PUT, no dedicated uncomplete route.
+- Member removal is a soft delete (section 1): the member is marked inactive, is omitted from team responses, and counts as a non-member; historical feedback keeps its submitter and the submitter name recorded at submission.
+- Routes: as listed in section 5, all under `/api`, closing retrospectives via PUT, no dedicated uncomplete route.
 - Feedback types are exactly WENT_WELL, NEEDS_IMPROVEMENT and ACTION_ITEM; no aliases.
 
 **Still open:**

@@ -94,8 +94,10 @@ This is valid.
 
 **Decision:**
 
-- Alphanumeric characters only
-- Whitespace allowed
+- ASCII letters, ASCII digits and the space character only
+- At least one letter or digit; leading and trailing spaces are allowed
+- Pattern, identical on request DTOs and entities: `^ *[A-Za-z0-9]+( +[A-Za-z0-9]+)* *$`
+- Values are stored exactly as submitted; the 255-character limit applies to the raw submitted value
 
 Examples:
 
@@ -141,7 +143,9 @@ Applies to:
 
 - Team names
 - Member names
-- Feedback content
+- Retrospective titles
+
+Feedback content and action-item content allow up to 4000 characters (see Length Restrictions).
 
 ---
 
@@ -169,6 +173,10 @@ Team Alpha
 
 can only exist once.
 
+Names are compared trimmed and case-insensitively, so `team alpha ` is a duplicate of `Team Alpha`.
+
+A duplicate fails with `400 Bad Request` and `{"message": "Team name already exists"}`, also when two requests race and the database rejects the second.
+
 ---
 
 ## Can members be added, removed, or renamed?
@@ -182,6 +190,12 @@ The API supports:
 - Rename member
 
 The team must still contain at least one member after any modification.
+
+Removing a member is a soft delete: the member is marked inactive and the row is kept, so feedback they submitted keeps its submitter.
+
+- Inactive members are not listed in team responses.
+- Inactive members count as non-members for every membership check.
+- Removing the last active member fails with `400 Bad Request` and `{"message": "A team must have at least one member"}`.
 
 ---
 
@@ -328,6 +342,10 @@ The following fields are immutable:
 
 The supplied member ID must belong to the team that owns the retrospective.
 
+Over HTTP, `memberId` is a required field in the request body of create and close.
+
+A member that is not on the team fails with `400 Bad Request` and `{"message": "Member is not part of this team"}`.
+
 ---
 
 # 3. Feedback Operations and Rules
@@ -368,6 +386,13 @@ type
 | content | max 4000 chars |
 | submitterId | must belong to the team |
 | type | valid enum |
+
+The HTTP API identifies the submitter by `submitterId` only.
+
+The service layer additionally accepts a submitter name, because the inherited business-rule tests call it that way. A name is resolved among the team's active members, trimmed and case-insensitively:
+
+- No match fails with `400 Bad Request` and `{"message": "Member is not part of this team"}`.
+- More than one match fails with `400 Bad Request` and `{"message": "Member name is ambiguous"}`.
 
 ---
 
@@ -416,6 +441,8 @@ No global feedback endpoint is required.
 
 After closure all feedback becomes read-only.
 
+Any change to feedback or action items in a closed retrospective fails with `400 Bad Request` and `{"message": "Retrospective is closed"}`.
+
 ---
 
 # 4. Action Item Lifecycle and Representation
@@ -459,10 +486,20 @@ priority
 completed
 ```
 
-Invalid requests return:
+Invalid requests return `400 Bad Request` with:
 
-```http
-400 Bad Request
+```json
+{
+  "message": "Priority is required for action items"
+}
+```
+
+or
+
+```json
+{
+  "message": "Priority and completed are only allowed for action items"
+}
 ```
 
 ---
@@ -532,6 +569,8 @@ Response:
 }
 ```
 
+There is no dedicated uncomplete route. An uncomplete attempt is `PUT /api/feedback/{id}` with `completed: false` on a completed action item.
+
 ---
 
 ## Can action items be deleted while retrospective is open?
@@ -576,49 +615,51 @@ Not required.
 
 # 5. API and Error Behaviour
 
-## Suggested Endpoints
+## Endpoints
+
+Every route is under the `/api` prefix.
 
 ### Teams
 
 ```http
-POST   /teams
-GET    /teams
-GET    /teams/{id}
+POST   /api/teams
+GET    /api/teams
+GET    /api/teams/{id}
 ```
 
 ### Members
 
 ```http
-POST   /teams/{id}/members
-PUT    /teams/{id}/members/{memberId}
-DELETE /teams/{id}/members/{memberId}
+POST   /api/teams/{id}/members
+PUT    /api/teams/{id}/members/{memberId}
+DELETE /api/teams/{id}/members/{memberId}
 ```
 
 ### Retrospectives
 
 ```http
-POST   /teams/{id}/retrospectives
-GET    /teams/{id}/retrospectives
+POST   /api/teams/{id}/retrospectives
+GET    /api/teams/{id}/retrospectives
 
-GET    /retrospectives/{id}
-POST   /retrospectives/{id}/close
+GET    /api/retrospectives/{id}
+PUT    /api/retrospectives/{id}/close
 ```
 
 ### Feedback
 
 ```http
-POST   /retrospectives/{id}/feedback
-GET    /retrospectives/{id}/feedback
+POST   /api/retrospectives/{id}/feedback
+GET    /api/retrospectives/{id}/feedback
 
-PUT    /feedback/{id}
-DELETE /feedback/{id}
+PUT    /api/feedback/{id}
+DELETE /api/feedback/{id}
 ```
 
 ### Action Items
 
 ```http
-GET   /action-items
-PUT   /action-items/{id}/complete
+GET   /api/action-items
+PUT   /api/action-items/{id}/complete
 ```
 
 ---
@@ -695,6 +736,16 @@ Examples:
 }
 ```
 
+Every error response uses this format, including errors raised outside the controllers. Stack traces are never returned.
+
+| Situation | Status | Message |
+|------------|---------|---------|
+| Request validation failure | 400 | `field: message`, joined with `; ` |
+| Unknown route | 404 | `No endpoint <METHOD> <path>` |
+| Unsupported method | 405 | `Method <METHOD> is not supported for this endpoint` |
+| Unsupported content type | 415 | `Content type must be application/json` |
+| Unexpected server error | 500 | `Unexpected error` |
+
 ---
 
 ## What happens when a resource does not exist?
@@ -711,11 +762,11 @@ Response:
 }
 ```
 
-Equivalent messages should be used for missing:
+Messages for other missing resources:
 
-- teams
-- members
-- feedback items
+- `Team not found`
+- `Member not found`
+- `Feedback item not found`
 
 ---
 
@@ -742,8 +793,18 @@ Returns retrospective data only.
 Feedback must be loaded separately:
 
 ```http
-GET /retrospectives/{id}/feedback
+GET /api/retrospectives/{id}/feedback
 ```
+
+Members are part of a team, not a related object, so team responses include them.
+
+| Resource | Fields |
+|------------|---------|
+| Team | `id`, `name`, `members` (active members only, each `id`, `name`) |
+| Retrospective | `id`, `title`, `date`, `status`, `teamId` |
+| Feedback and action item | `id`, `retrospectiveId`, `content`, `type`, `submitterId`, `submitterName`, `priority`, `completed` |
+
+`priority` and `completed` are omitted from the response unless `type` is `ACTION_ITEM`.
 
 ---
 
@@ -868,3 +929,5 @@ The following should be covered by automated tests:
 - 400 validation responses
 - UUID handling
 - Error response consistency
+
+Each endpoint gets a contract test for success, invalid input (400), missing resource (404) and business-rule violation (400). A case that cannot occur for an endpoint, such as a 404 on `POST /api/teams`, gets no test and is listed in `test-matrix.md`.
