@@ -95,7 +95,7 @@ This is valid.
 **Decision:**
 
 - Alphanumeric characters only
-- No whitespace allowed
+- Whitespace allowed
 
 Examples:
 
@@ -103,16 +103,8 @@ Valid:
 
 ```text
 TeamA
-Backend01
-Jonas123
-```
-
-Invalid:
-
-```text
-Backend Team
-John Doe
-Team-A
+Backend 01
+Jonas 123
 ```
 
 ---
