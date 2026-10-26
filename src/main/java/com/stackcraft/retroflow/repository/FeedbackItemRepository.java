@@ -3,6 +3,8 @@ package com.stackcraft.retroflow.repository;
 import com.stackcraft.retroflow.entity.FeedbackItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.UUID;
+
 /**
  * STUB — left behind by the previous vendor.
  *
@@ -10,5 +12,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
  * methods here as the service layer needs them (e.g. finding items by
  * retrospective, or filtering action items by priority/completed status).
  */
-public interface FeedbackItemRepository extends JpaRepository<FeedbackItem, Long> {
+public interface FeedbackItemRepository extends JpaRepository<FeedbackItem, UUID> {
 }

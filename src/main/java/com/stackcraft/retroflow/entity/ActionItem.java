@@ -1,37 +1,69 @@
 package com.stackcraft.retroflow.entity;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import java.util.UUID;
 
 /**
- * STUB — left behind by the previous vendor.
- *
- * An ActionItem is a special kind of FeedbackItem (type ACTION_ITEM) that
- * additionally tracks a priority (LOW/MEDIUM/HIGH) and a boolean
- * completed flag. Action items can be marked completed, but a completed
- * action item can never be uncompleted. They must also be retrievable
- * filtered by priority and by completed status.
- *
- * This class is not yet related to FeedbackItem — deciding and
- * implementing the inheritance strategy between the two (single table,
- * joined, or a composition approach) is part of Block 1. Nothing has
- * been decided yet; this is deliberately just a bare stub.
+ * Action-item view of a persisted FeedbackItem; action items are not a
+ * separate JPA entity.
  */
-@Entity
 public class ActionItem {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private UUID id;
+    private String content;
+    private Priority priority;
+    private Boolean completed;
 
-    public Long getId() {
+    public ActionItem() {
+    }
+
+    public ActionItem(UUID id, String content, Priority priority, Boolean completed) {
+        this.id = id;
+        this.content = content;
+        this.priority = priority;
+        this.completed = completed;
+    }
+
+    public UUID getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public Priority getPriority() {
+        return priority;
+    }
+
+    public void setPriority(Priority priority) {
+        this.priority = priority;
+    }
+
+    public Boolean getCompleted() {
+        return completed;
+    }
+
+    public void setCompleted(Boolean completed) {
+        this.completed = completed;
+    }
+
+    public static ActionItem from(FeedbackItem feedbackItem) {
+        if (feedbackItem == null || feedbackItem.getType() != FeedbackType.ACTION_ITEM) {
+            throw new IllegalArgumentException("Feedback item must have type ACTION_ITEM");
+        }
+        return new ActionItem(
+            feedbackItem.getId(),
+            feedbackItem.getContent(),
+            feedbackItem.getPriority(),
+            feedbackItem.getCompleted()
+        );
+    }
 }
